@@ -45,7 +45,7 @@ def add_welcome_note(request: Request):
   katapult_response = requests.post(new_request_url, json=request_body, headers=header)
   
   # Return the response
-  return Reponse(
+  return Response(
     content = katapult_response.text,
     status_code = katapult_response.status_code
   )
