@@ -56,7 +56,7 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
       if match:
         matching_nodes.append(node)
     
-
+    print(f"Data: {matching_nodes}\nTotal: {len(matching_nodes)}\nFilters applied: {attribute_filters}\nJob ID: {job_id}")
     return {
       "data": matching_nodes,
       "total": len(matching_nodes),
