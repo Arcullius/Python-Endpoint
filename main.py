@@ -26,7 +26,7 @@ def add_welcome_note(request: Request):
   # If any parameters are not defined, respond with an error 400 response
   if not (job_id and node_id and api_key):
     return Response(content="Missing parameters", status_code=400)
-
+ attribute_filters = {"node_type": "pole"}
   new_request_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes/?api_key={api_key}"
 
 
