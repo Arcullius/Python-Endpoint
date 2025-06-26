@@ -6,31 +6,26 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://dcs.katapultpro.com"],  # or ["*"] for testing only
+    allow_origins=["https://dcs.katapultpro.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Specify what subpath should trigger this function
 @app.get("/get_nodes_with_attribute_filter")
 def get_nodes_with_attribute_filter_endpoint(request: Request):
 
-  # Extract query parameters
   query_params = dict(request.query_params)
   api_key = query_params.get("api_key")
   
-  # Use demo job ID as default (same as the demo)
   job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
   
-  # Extract attribute filters from query parameters
   attribute_filters = {}
   for key, value in query_params.items():
     if key not in ["api_key", "job_id"]:
       attribute_filters[key] = value
 
-  # If API key is not defined, respond with an error 400 response
   if not api_key:
     return Response(content="Missing api_key parameter", status_code=400)
 
@@ -38,7 +33,6 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
   nodes_url = f"{BASE_URL}/{job_id}/nodes?api_key={api_key}"
 
   try:
-    # Make the GET request to fetch nodes
     nodes_response = requests.get(nodes_url)
     
     if nodes_response.status_code != 200:
@@ -51,7 +45,6 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
     nodes = data.get('data', [])
     matching_nodes = []
     
-    # Filter nodes based on attribute filters
     for node in nodes:
       match = True
       for key, filter_value in attribute_filters.items():
@@ -63,7 +56,7 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
       if match:
         matching_nodes.append(node)
     
-    # Return the filtered results
+
     return {
       "data": matching_nodes,
       "total": len(matching_nodes),
