@@ -13,7 +13,7 @@ app.add_middleware(
 )
 
 
-@app.post("/get_nodes_with_attribute_filter")
+@app.post("/add_welcome_note")
 def get_nodes_with_attribute_filter_endpoint(request: Request):
 
   # Extract query parameters
