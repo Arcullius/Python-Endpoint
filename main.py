@@ -15,7 +15,7 @@ app.add_middleware(
 
 
 @app.post("/add_welcome_note")
-def get_nodes_with_attribute_filter_endpoint(request: Request):
+def add_welcome_note(request: Request):
 
   # Extract query parameters
   query_params = dict(request.query_params)
