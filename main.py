@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Response
 import requests
+import json
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -20,7 +21,6 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
   query_params = dict(request.query_params)
   api_key = query_params.get("api_key")
   job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
-
   # If any parameters are not defined, respond with an error 400 response
   if not api_key:
     return Response(content="Missing api_key parameter", status_code=400)
@@ -59,14 +59,53 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
       if match:
         matching_nodes.append(node)
     
+    # Post notes to matching nodes
+    note_results = []
+    note_text = "This is a note from my new awesome python API tool!"
+    
+    for node in matching_nodes:
+      node_id = node.get('id')
+      if node_id:
+        # Create URL for updating this specific node
+        update_node_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes/{node_id}?api_key={api_key}"
+        
+        # The data we want to send to add a note
+        request_body = {
+          "add_attributes": {
+            "note": note_text
+          }
+        }
+        
+        try:
+          # Make the POST request to add the note
+          update_response = requests.post(update_node_url, json=request_body, headers=headers)
+          
+          note_results.append({
+            "node_id": node_id,
+            "status_code": update_response.status_code,
+            "success": update_response.status_code == 200,
+            "response": update_response.text if update_response.status_code != 200 else "Note added successfully"
+          })
+          
+        except Exception as node_error:
+          note_results.append({
+            "node_id": node_id,
+            "status_code": 500,
+            "success": False,
+            "response": f"Error updating node: {str(node_error)}"
+          })
+    
     # Return the response
-    print(f"Data: {len(matching_nodes)} nodes found\nFilters applied: {attribute_filters}\nJob ID: {job_id}")
+    print(f"Found {len(matching_nodes)} matching nodes, attempted to add notes to all of them")
     
     return {
-      "data": matching_nodes,
-      "total": len(matching_nodes),
+      "matching_nodes_found": len(matching_nodes),
+      "notes_attempted": len(note_results),
+      "successful_updates": len([r for r in note_results if r["success"]]),
+      "failed_updates": len([r for r in note_results if not r["success"]]),
       "filters_applied": attribute_filters,
-      "job_id": job_id
+      "job_id": job_id,
+      "note_results": note_results
     }
     
   except Exception as e:
