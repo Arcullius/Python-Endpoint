@@ -57,12 +57,12 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
         matching_nodes.append(node)
     
     print(f"Data: {matching_nodes}\nTotal: {len(matching_nodes)}\nFilters applied: {attribute_filters}\nJob ID: {job_id}")
-    return {
-      "data": matching_nodes,
-      "total": len(matching_nodes),
-      "filters_applied": attribute_filters,
-      "job_id": job_id
-    }
+    # return {
+    #   "data": matching_nodes,
+    #   "total": len(matching_nodes),
+    #   "filters_applied": attribute_filters,
+    #   "job_id": job_id
+    # }
     
   except Exception as e:
     return Response(
