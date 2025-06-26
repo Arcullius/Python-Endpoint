@@ -21,6 +21,7 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
   query_params = dict(request.query_params)
   api_key = query_params.get("api_key")
   job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
+
   # If any parameters are not defined, respond with an error 400 response
   if not api_key:
     return Response(content="Missing api_key parameter", status_code=400)
@@ -59,54 +60,46 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
       if match:
         matching_nodes.append(node)
     
-    # Post notes to matching nodes
-    note_results = []
-    note_text = "This is a note from my new awesome python API tool!"
-    
-    for node in matching_nodes:
-      node_id = node.get('id')
-      if node_id:
-        # Create URL for updating this specific node
-        update_node_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes/{node_id}?api_key={api_key}"
-        
-        # The data we want to send to add a note
-        request_body = {
-          "add_attributes": {
-            "note": note_text
-          }
-        }
-        
-        try:
-          # Make the POST request to add the note
-          update_response = requests.post(update_node_url, json=request_body, headers=headers)
-          
-          note_results.append({
-            "node_id": node_id,
-            "status_code": update_response.status_code,
-            "success": update_response.status_code == 200,
-            "response": update_response.text if update_response.status_code != 200 else "Note added successfully"
-          })
-          
-        except Exception as node_error:
-          note_results.append({
-            "node_id": node_id,
-            "status_code": 500,
-            "success": False,
-            "response": f"Error updating node: {str(node_error)}"
-          })
-    
     # Return the response
-    print(f"Found {len(matching_nodes)} matching nodes, attempted to add notes to all of them")
+    print(f"Data: {len(matching_nodes)} nodes found\nFilters applied: {attribute_filters}\nJob ID: {job_id}")
     
-    return {
-      "matching_nodes_found": len(matching_nodes),
-      "notes_attempted": len(note_results),
-      "successful_updates": len([r for r in note_results if r["success"]]),
-      "failed_updates": len([r for r in note_results if not r["success"]]),
+    # Create JSON string of the results
+    results_json = {
+      "data": matching_nodes,
+      "total": len(matching_nodes),
       "filters_applied": attribute_filters,
-      "job_id": job_id,
-      "note_results": note_results
+      "job_id": job_id
     }
+    
+    # Convert to formatted JSON string for the note
+    note_text = json.dumps(results_json, indent=2)
+    
+    # Create a map note with the JSON data
+    note_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/notes?api_key={api_key}"
+    
+    note_data = {
+      "text": note_text,
+      "type": "info",
+      "title": f"Filtered Nodes Result ({len(matching_nodes)} poles found)"
+    }
+    
+    # Post the note to the map
+    note_response = requests.post(note_url, json=note_data, headers=headers)
+    
+    if note_response.status_code in [200, 201]:
+      return {
+        "success": True,
+        "message": f"Map note created with {len(matching_nodes)} matching nodes",
+        "note_id": note_response.json().get("id"),
+        "total_nodes_found": len(matching_nodes),
+        "filters_applied": attribute_filters,
+        "job_id": job_id
+      }
+    else:
+      return Response(
+        content=f"Failed to create note: {note_response.text}",
+        status_code=note_response.status_code
+      )
     
   except Exception as e:
     return Response(
