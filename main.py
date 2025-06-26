@@ -6,35 +6,38 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://dcs.katapultpro.com"],
+    allow_origins=["https://dcs.katapultpro.com"],  # or ["*"] for testing only
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.post("/get_nodes_with_attribute_filter")
-def get_nodes_with_attribute_filter_endpoint(request: Request):
+# Specify what subpath should trigger this function
+@app.post("/add_welcome_note")
+def add_welcome_note(request: Request):
 
+  # Extract query parameters
   query_params = dict(request.query_params)
+  job_id = query_params.get("job_id")
+  # node_id = query_params.get("node_id")
   api_key = query_params.get("api_key")
-  
-  job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
-  
-  attribute_filters = {}
-  for key, value in query_params.items():
-    if key not in ["api_key", "job_id"]:
-      attribute_filters[key] = value
 
-  if not api_key:
-    return Response(content="Missing api_key parameter", status_code=400)
+  # If any parameters are not defined, respond with an error 400 response
+  if not (job_id and node_id and api_key):
+    return Response(content="Missing parameters", status_code=400)
 
-  BASE_URL = "https://dcs.katapultpro.com/api/v3/jobs"
-  nodes_url = f"{BASE_URL}/{job_id}/nodes?api_key={api_key}"
+  new_request_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes/?api_key={api_key}"
 
-  try:
-    nodes_response = requests.get(nodes_url)
-    
+
+   
+
+  # The request header
+  header = {
+    "Content-Type": "application/json",
+  }
+  # The data we want to send to the Katapult Pro API
+  nodes_response = requests.get(new_request_url, headers=header)
     if nodes_response.status_code != 200:
       return Response(
         content=nodes_response.text,
@@ -56,20 +59,21 @@ def get_nodes_with_attribute_filter_endpoint(request: Request):
       if match:
         matching_nodes.append(node)
     
-    print(f"Data: {matching_nodes}\nTotal: {len(matching_nodes)}\nFilters applied: {attribute_filters}\nJob ID: {job_id}")
-    return {
+  # Make the POST request
+  # katapult_response = requests.post(new_request_url, json=request_body, headers=header)
+  
+  # Return the response
+print(f"Data: {matching_nodes}\nTotal: {len(matching_nodes)}\nFilters applied: {attribute_filters}\nJob ID: {job_id}")
+   
+  return Response(
+      
       "data": matching_nodes,
       "total": len(matching_nodes),
       "filters_applied": attribute_filters,
       "job_id": job_id
     }
-    
-  except Exception as e:
-    return Response(
-      content=f"Error processing request: {str(e)}",
-      status_code=500
-    )
+    content = katapult_response.text,
+    status_code = katapult_response.status_code
+  )
 
 
-
-      
