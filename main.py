@@ -17,114 +17,111 @@ app.add_middleware(
 
 
 @app.post("/filter_nodes")
-def filter_nodes(request: Request):
+def filter_nodes(request: Request, custom_filters=None):
+  """
+  Filter nodes endpoint - returns nodes matching specified attribute criteria
+  Can be called as an API endpoint or internally by other functions
+  
+  Args:
+    request: FastAPI Request object containing query parameters
+    custom_filters: Optional dict of filters for internal function calls
+  """
 
-  # Extract query parameters
+  # Extract query parameters from the incoming request
   query_params = dict(request.query_params)
   api_key = query_params.get("api_key")
-  job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
+  job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")  # Default job ID if not provided
   node_id = query_params.get("node_id")
     
-  # If any parameters are not defined, respond with an error 400 response
+  # Validate required API key parameter
   if not api_key:
+    if custom_filters is not None:
+      # For internal calls, raise exception to be handled by calling function
+      raise Exception("Missing api_key parameter")
+    # For external API calls, return HTTP 400 error response
     return Response(content="Missing api_key parameter", status_code=400)
   
-  # Hardcode attribute filters for node_type
-  attribute_filters = {"node_type": "pole"}
-  nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
-
   try:
-    # The request header
+    # Determine which filters to use: custom filters (for internal calls) or default pole filter (for API calls)
+    attribute_filters = custom_filters if custom_filters is not None else {"node_type": "pole"}
+    
+    # Build the API URL to fetch all nodes from the specified job
+    nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
+    
+    # Set up HTTP headers for the API request
     headers = {
-      "Content-Type": "application/json",
+        "Content-Type": "application/json",
     }
     
-    # Get nodes from the Katapult Pro API
+    # Make API call to Katapult Pro to get all nodes for the job
     nodes_response = requests.get(nodes_url, headers=headers)
     
+    # Check if the API call was successful
     if nodes_response.status_code != 200:
-      return Response(
-        content=nodes_response.text,
-        status_code=nodes_response.status_code
-      )
-      
+        if custom_filters is not None:
+            # For internal calls, raise exception with detailed error info
+            raise Exception(f"Failed to fetch nodes: {nodes_response.status_code} {nodes_response.text}")
+        # For external API calls, return the error response from upstream API
+        return Response(
+            content=nodes_response.text,
+            status_code=nodes_response.status_code
+        )
+        
+    # Parse the JSON response and extract the nodes list
     data = nodes_response.json()
     nodes = data.get('data', [])
     matching_nodes = []
       
+    # Apply filtering logic to find nodes that match all specified attribute criteria
     for node in nodes:
-      match = True
-      for key, filter_value in attribute_filters.items():
-        node_attributes = node.get('attributes', {})
-        attribute_value = next(iter(node_attributes.get(key, {}).values()), node_attributes.get(key))
-        if attribute_value != filter_value:
-          match = False
-          break
-      if match:
-        matching_nodes.append(node)
+        match = True
+        
+        # Check each filter criteria against the node's attributes
+        for key, filter_value in attribute_filters.items():
+            node_attributes = node.get('attributes', {})
+            # Handle both direct attribute values and nested attribute objects with instance IDs
+            # Use next() to get the first value from nested dicts, or fall back to direct value
+            attribute_value = next(iter(node_attributes.get(key, {}).values()), node_attributes.get(key))
+            
+            # If any filter criteria doesn't match, exclude this node
+            if attribute_value != filter_value:
+                match = False
+                break
+                
+        # Add node to results if it matches all filter criteria
+        if match:
+            matching_nodes.append(node)
     
-    # Return the response
+    # For internal function calls, return just the filtered nodes list
+    if custom_filters is not None:
+        return matching_nodes
+    
+    # Log results for debugging and monitoring
     print(f"Data: {len(matching_nodes)} nodes found\nFilters applied: {attribute_filters}\nJob ID: {job_id}\nNodes: {matching_nodes}")
     
-    # Create JSON string of the results
+    # For external API calls, format and return a complete JSON response
     results_json = {
-      "data": matching_nodes,
-      "total": len(matching_nodes),
-      "filters_applied": attribute_filters,
-      "job_id": job_id
+      "data": matching_nodes,              # List of nodes that matched the filter criteria
+      "total": len(matching_nodes),        # Count of matching nodes
+      "filters_applied": attribute_filters, # The filter criteria that were used
+      "job_id": job_id                     # The job ID that was queried
     }
     
+    # Return the formatted JSON response
     return Response(
       content=json.dumps(results_json, indent=2),
       media_type="application/json",
     
     )
   except Exception as e:
+    if custom_filters is not None:
+      # For internal function calls, propagate the exception to the calling function
+      raise e
+    # For external API calls, return a formatted error response
     return Response(
       content=f"Error processing request: {str(e)}",
       status_code=500
     )
-
-@app.post("/create_job")
-def create_job_endpoint(request: Request):
-    # Extract query parameters
-    query_params = dict(request.query_params)
-    api_key = query_params.get("api_key")
-    job_name = query_params.get("job_name")
-    model_type = query_params.get("model_type", "default")
-    metadata = query_params.get("metadata")
-    
-    # If any required parameters are not defined, respond with an error 400 response
-    if not api_key or not job_name:
-        return Response(content="Missing required parameters: api_key and job_name", status_code=400)
-    
-    try:
-        url = f"https://dcs.katapultpro.com/api/v3/jobs?api_key={api_key}"
-        request_body = {
-            'name': job_name,
-            'model': model_type,
-            'metadata': json.loads(metadata) if metadata else None,
-        }
-        
-        headers = {
-            "Content-Type": "application/json",
-        }
-        
-        response = requests.post(url, json=request_body, headers=headers)
-        
-        if response.status_code in [200, 201]:
-            return response.json()
-        else:
-            return Response(
-                content=response.text,
-                status_code=response.status_code
-            )
-            
-    except Exception as e:
-        return Response(
-            content=f"Error processing request: {str(e)}",
-            status_code=500
-        )
 
 @app.post("/get_nodes_with_photos")
 def get_nodes_with_photos_endpoint(request: Request):
@@ -211,253 +208,106 @@ def get_nodes_with_photos_endpoint(request: Request):
 
 @app.post("/update_node_attributes")
 def update_node_attributes_endpoint(request: Request):
-    # Extract query parameters
+    """
+    Update node attributes endpoint - modifies attributes on nodes matching specified filters
+    
+    Args:
+        request: FastAPI Request object containing query parameters
+    """
+    
+    # Extract all required parameters from the request query string
     query_params = dict(request.query_params)
     api_key = query_params.get("api_key")
     job_id = query_params.get("job_id")
-    attribute_filters = query_params.get("attribute_filters")
-    new_attributes = query_params.get("new_attributes")
-    operation = query_params.get("operation", "add")
+    attribute_filters = query_params.get("attribute_filters")  # JSON string of filter criteria
+    new_attributes = query_params.get("new_attributes")        # JSON string of attributes to add/update/remove
+    operation = query_params.get("operation", "add")           # Default to 'add' operation
     
-    # If any required parameters are not defined, respond with an error 400 response
+    # Validate that all required parameters are present
     if not api_key or not job_id or not attribute_filters or not new_attributes:
         return Response(content="Missing required parameters: api_key, job_id, attribute_filters, new_attributes", status_code=400)
     
     try:
-        # Parse JSON parameters
+        # Parse JSON parameters from query strings into Python objects
         attribute_filters = json.loads(attribute_filters)
         new_attributes = json.loads(new_attributes)
         
-        # First get nodes with the specified filters
-        nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
+        # Reuse the filtering logic from filter_nodes to find matching nodes
+        # Pass the parsed filters to get nodes that match the specified criteria
+        matching_nodes = filter_nodes(request, attribute_filters)
+        
+        # Set up HTTP headers for API requests to Katapult Pro
         headers = {
             "Content-Type": "application/json",
         }
         
-        nodes_response = requests.get(nodes_url, headers=headers)
-        if nodes_response.status_code != 200:
-            return Response(
-                content=nodes_response.text,
-                status_code=nodes_response.status_code
-            )
-            
-        data = nodes_response.json()
-        nodes = data.get('data', [])
-        matching_nodes = []
-        
-        # Filter nodes based on attribute filters
-        for node in nodes:
-            match = True
-            for key, filter_value in attribute_filters.items():
-                node_attributes = node.get('attributes', {})
-                attribute_value = next(iter(node_attributes.get(key, {}).values()), node_attributes.get(key))
-                if attribute_value != filter_value:
-                    match = False
-                    break
-            if match:
-                matching_nodes.append(node)
-        
+        # Process each matching node to apply the requested attribute changes
         results = []
         for node in matching_nodes:
             update_body = {}
+            
+            # Build the update request body based on the specified operation type
             if operation == 'add':
+                # Add new attributes to the node (will create new or overwrite existing)
                 update_body['add_attributes'] = new_attributes
             elif operation == 'update':
+                # Update existing attributes while preserving the current structure
                 current_attributes = node.get('attributes', {})
                 updated_attributes = current_attributes.copy()
+                
+                # Update each specified attribute, handling both direct values and nested objects
                 for key, value in new_attributes.items():
                     if key in current_attributes:
                         if isinstance(current_attributes[key], dict):
+                            # For nested attribute objects (with instance IDs), update all instances
                             for instance_id in current_attributes[key]:
                                 updated_attributes[key][instance_id] = value
                         else:
+                            # For direct attribute values, simply replace the value
                             updated_attributes[key] = value
+                            
+                # Only include attributes in the update if there are changes to make
                 if updated_attributes:
                     update_body['attributes'] = updated_attributes
             elif operation == 'remove':
+                # Remove specified attributes that currently exist on the node
                 update_body['remove_attributes'] = [attr for attr in new_attributes if node.get('attributes', {}).get(attr) is not None]
             else:
+                # Skip nodes if operation type is unrecognized
                 continue
                 
+            # Only make API call if there are actual changes to apply
             if update_body:
+                # Build the API URL for updating this specific node
                 update_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes/{node['id']}?api_key={api_key}"
+                
+                # Make API call to Katapult Pro to update the node
                 response = requests.post(update_url, json=update_body, headers=headers)
+                
+                # Parse the response and add to results
                 results.append(response.json())
             else:
+                # If no changes needed, include the original node data in results
                 results.append(node)
         
+        # Format the final response with summary information
         result = {
-            "updated_nodes": results,
-            "total_updated": len(results),
-            "operation": operation,
-            "job_id": job_id
+            "updated_nodes": results,        # List of updated node data or API responses
+            "total_updated": len(results),   # Count of nodes that were processed
+            "operation": operation,          # The operation type that was performed
+            "job_id": job_id                # The job ID that was modified
         }
         
+        # Return the formatted JSON response
         return Response(
             content=json.dumps(result, indent=2),
             media_type="application/json"
         )
         
     except Exception as e:
+        # Handle any errors that occurred during processing
         return Response(
             content=f"Error processing request: {str(e)}",
             status_code=500
         )
 
-@app.post("/delete_nodes_by_attribute")
-def delete_nodes_by_attribute_endpoint(request: Request):
-    # Extract query parameters
-    query_params = dict(request.query_params)
-    api_key = query_params.get("api_key")
-    job_id = query_params.get("job_id")
-    attribute_filters = query_params.get("attribute_filters")
-    
-    # If any required parameters are not defined, respond with an error 400 response
-    if not api_key or not job_id or not attribute_filters:
-        return Response(content="Missing required parameters: api_key, job_id, attribute_filters", status_code=400)
-    
-    try:
-        # Parse JSON parameters
-        attribute_filters = json.loads(attribute_filters)
-        
-        # First get nodes with the specified filters
-        nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
-        headers = {
-            "Content-Type": "application/json",
-        }
-        
-        nodes_response = requests.get(nodes_url, headers=headers)
-        if nodes_response.status_code != 200:
-            return Response(
-                content=nodes_response.text,
-                status_code=nodes_response.status_code
-            )
-            
-        data = nodes_response.json()
-        nodes = data.get('data', [])
-        matching_nodes = []
-        
-        # Filter nodes based on attribute filters
-        for node in nodes:
-            match = True
-            for key, filter_value in attribute_filters.items():
-                node_attributes = node.get('attributes', {})
-                attribute_value = next(iter(node_attributes.get(key, {}).values()), node_attributes.get(key))
-                if attribute_value != filter_value:
-                    match = False
-                    break
-            if match:
-                matching_nodes.append(node)
-        
-        results = []
-        for node in matching_nodes:
-            delete_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes/{node['id']}?api_key={api_key}"
-            response = requests.delete(delete_url, headers=headers)
-            results.append({'deleted_node': node, 'response': response.json() if response.status_code in [200, 204] else response.text})
-        
-        result = {
-            "deleted_nodes": results,
-            "total_deleted": len(results),
-            "job_id": job_id
-        }
-        
-        return Response(
-            content=json.dumps(result, indent=2),
-            media_type="application/json"
-        )
-        
-    except Exception as e:
-        return Response(
-            content=f"Error processing request: {str(e)}",
-            status_code=500
-        )
-
-@app.post("/add_welcome_note")
-def add_welcome_note(request: Request):
-    # Extract query parameters
-    query_params = dict(request.query_params)
-    api_key = query_params.get("api_key")
-    job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
-    node_id = query_params.get("node_id")
-
-    # If any parameters are not defined, respond with an error 400 response
-    if not api_key:
-        return Response(content="Missing api_key parameter", status_code=400)
-    
-    # Hardcode attribute filters for node_type
-    attribute_filters = {"node_type": "pole"}
-    nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
-
-    try:
-        # The request header
-        headers = {
-            "Content-Type": "application/json",
-        }
-        
-        # Get nodes from the Katapult Pro API
-        nodes_response = requests.get(nodes_url, headers=headers)
-        
-        if nodes_response.status_code != 200:
-            return Response(
-                content=nodes_response.text,
-                status_code=nodes_response.status_code
-            )
-            
-        data = nodes_response.json()
-        nodes = data.get('data', [])
-        matching_nodes = []
-          
-        for node in nodes:
-            match = True
-            for key, filter_value in attribute_filters.items():
-                node_attributes = node.get('attributes', {})
-                attribute_value = next(iter(node_attributes.get(key, {}).values()), node_attributes.get(key))
-                if attribute_value != filter_value:
-                    match = False
-                    break
-            if match:
-                matching_nodes.append(node)
-        
-        # Create JSON string of the results
-        results_json = {
-            "data": matching_nodes,
-            "total": len(matching_nodes),
-            "filters_applied": attribute_filters,
-            "job_id": job_id
-        }
-        
-        # Convert to formatted JSON string for the note
-        note_text = json.dumps(results_json, indent=2)
-        
-        # Create a map note with the JSON data
-        note_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/notes?api_key={api_key}"
-        
-        note_data = {
-            "text": note_text,
-            "type": "info",
-            "title": f"Filtered Nodes Result ({len(matching_nodes)} poles found)"
-        }
-        
-        # Post the note to the map
-        note_response = requests.post(note_url, json=note_data, headers=headers)
-        
-        if note_response.status_code in [200, 201]:
-            return {
-                "success": True,
-                "message": f"Map note created with {len(matching_nodes)} matching nodes",
-                "note_id": note_response.json().get("id"),
-                "total_nodes_found": len(matching_nodes),
-                "filters_applied": attribute_filters,
-                "job_id": job_id
-            }
-        else:
-            return Response(
-                content=f"Failed to create note: {note_response.text}",
-                status_code=note_response.status_code
-            )
-        
-    except Exception as e:
-        return Response(
-            content=f"Error processing request: {str(e)}",
-            status_code=500
-        )
