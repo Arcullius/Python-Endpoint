@@ -61,7 +61,7 @@ def add_welcome_note(request: Request):
         matching_nodes.append(node)
     
     # Return the response
-    print(f"Data: {len(matching_nodes)} nodes found\nFilters applied: {attribute_filters}\nJob ID: {job_id}")
+    print(f"Data: {len(matching_nodes)} nodes found\nFilters applied: {attribute_filters}\nJob ID: {job_id}\nNodes: {matching_nodes}")
     
     # Create JSON string of the results
     results_json = {
