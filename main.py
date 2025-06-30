@@ -21,7 +21,7 @@ def add_welcome_note(request: Request):
   query_params = dict(request.query_params)
   api_key = query_params.get("api_key")
   job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
-
+    
   # If any parameters are not defined, respond with an error 400 response
   if not api_key:
     return Response(content="Missing api_key parameter", status_code=400)
