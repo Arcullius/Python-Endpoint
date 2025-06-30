@@ -21,6 +21,7 @@ def add_welcome_note(request: Request):
   query_params = dict(request.query_params)
   api_key = query_params.get("api_key")
   job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")
+  node_id = query_params.get("node_id")
     
   # If any parameters are not defined, respond with an error 400 response
   if not api_key:
@@ -75,7 +76,8 @@ def add_welcome_note(request: Request):
     note_text = json.dumps(results_json, indent=2)
     
     # Create a map note with the JSON data
-    note_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/notes?api_key={api_key}"
+    note_url = f"https://katapultpro.com/api/v3/jobs/{job_id}/nodes/{node_id}/?api_key={api_key}"
+
     
     note_data = {
       "text": note_text,
@@ -106,5 +108,3 @@ def add_welcome_note(request: Request):
       content=f"Error processing request: {str(e)}",
       status_code=500
     )
-
-
