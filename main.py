@@ -16,7 +16,7 @@ app.add_middleware(
 
 
 
-@app.post("/filter_nodes")
+@app.get("/filter_nodes")
 def filter_nodes(request: Request, custom_filters=None):
   """
   Filter nodes endpoint - returns nodes matching specified attribute criteria
