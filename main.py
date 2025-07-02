@@ -17,12 +17,18 @@ app.add_middleware(
 
 
 @app.get("/filter_nodes")
-def filter_nodes(request: Request, custom_filters=None):
-  # Extract query parameters from the incoming request
-  query_params = dict(request.query_params)
-  api_key = query_params.get("api_key")
-  job_id = query_params.get("job_id", "-OTcBEj966ESJQ7vQSvE")  # Default job ID if not provided
-  node_id = query_params.get("node_id")
+def filter_nodes(request: Request = None, api_key: str = None, job_id: str = "-OTcBEj966ESJQ7vQSvE", custom_filters=None):
+  # Handle parameters from either GET request or direct function call
+  if request is not None:
+    # Extract query parameters from the incoming GET request
+    query_params = dict(request.query_params)
+    api_key = query_params.get("api_key")
+    job_id = query_params.get("job_id", "-OTcBEj966ESJQ7vQSvE")  # Default job ID if not provided
+    node_id = query_params.get("node_id")
+  # For direct function calls, use the provided parameters
+  elif api_key is None:
+    # If called internally without proper parameters, raise exception
+    raise Exception("Missing api_key parameter for internal call")
     
   # Validate required API key parameter
   if not api_key:
@@ -102,6 +108,7 @@ def filter_nodes(request: Request, custom_filters=None):
     content=json.dumps(results_json, indent=2),
     media_type="application/json",
   )
+
 
 @app.post("/get_nodes_with_photos")
 def get_nodes_with_photos_endpoint(request: Request):
