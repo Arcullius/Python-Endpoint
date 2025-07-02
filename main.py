@@ -110,88 +110,104 @@ def filter_nodes(request: Request = None, api_key: str = None, job_id: str = "-O
   )
 
 
-@app.post("/get_nodes_with_photos")
+# This GET retrieves all nodes that have associated photos with their metadata
+@app.get("/get_nodes_with_photos")
 def get_nodes_with_photos_endpoint(request: Request):
-    # Extract query parameters
+   
+    # Extract query parameters from the incoming request
     query_params = dict(request.query_params)
     api_key = query_params.get("api_key")
-    job_id = query_params.get("job_id")
-    
-    # If any required parameters are not defined, respond with an error 400 response
+    job_id = query_params.get("job_id", "-OTcBEj966ESJQ7vQSvE")  # Default job ID if not provided
+    # Validate that all required parameters are present
     if not api_key or not job_id:
         return Response(content="Missing required parameters: api_key and job_id", status_code=400)
     
-    try:
-        nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
-        photos_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/photos?api_key={api_key}"
+    # Build API URLs for fetching both nodes and photos data
+    nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
+    photos_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/photos?api_key={api_key}"
+    
+    # Set up HTTP headers for API requests
+    header = {
+        "Content-Type": "application/json",
+    }
+    
+    # Make parallel API calls to get both nodes and photos data
+    nodes_response = requests.get(nodes_url, headers=header)
+    photos_response = requests.get(photos_url, headers=header)
+    
+    # Check if the nodes API call was successful
+    if nodes_response.status_code != 200:
+        print(f"Network error: {nodes_response.text}")
+        return Response(
+            content=nodes_response.text,
+            status_code=nodes_response.status_code
+        )
         
-        headers = {
-            "Content-Type": "application/json",
-        }
-        
-        # Get nodes and photos
-        nodes_response = requests.get(nodes_url, headers=headers)
-        photos_response = requests.get(photos_url, headers=headers)
-        
-        if nodes_response.status_code != 200:
-            return Response(
-                content=nodes_response.text,
-                status_code=nodes_response.status_code
-            )
+    # Check if the photos API call was successful
+    if photos_response.status_code != 200:
+        print(f"Network error: {photos_response.text}")
+        return Response(
+            content=photos_response.text,
+            status_code=photos_response.status_code
+        )
+    
+    # Parse JSON responses from both API calls
+    nodes_data = nodes_response.json()
+    photos_data = photos_response.json()
+    
+    # Process each node to include associated photo information
+    nodes = [
+        {
+            # Basic node information
+            "id": node_data.get("id"),
+            "latitude": node_data.get("latitude"),
+            "longitude": node_data.get("longitude"),
+            "attributes": node_data.get("attributes", {}),
             
-        if photos_response.status_code != 200:
-            return Response(
-                content=photos_response.text,
-                status_code=photos_response.status_code
-            )
-        
-        nodes_data = nodes_response.json()
-        photos_data = photos_response.json()
-        
-        nodes = [
-            {
-                'id': node_data.get('id'),
-                'latitude': node_data.get('latitude'),
-                'longitude': node_data.get('longitude'),
-                'attributes': node_data.get('attributes', {}),
-                'photos': [
-                    {
-                        'photoId': photo_id,
-                        'name': (photos_data['data'][i].get('filename') if 'data' in photos_data and i < len(photos_data['data']) else None),
-                        'date': datetime.fromtimestamp(photos_data['data'][i]['date_taken']).isoformat() if 'data' in photos_data and i < len(photos_data['data']) and 'date_taken' in photos_data['data'][i] else None,
-                        'associated': True,
-                        'metadata': {
-                            'camera': photos_data['data'][i].get('camera_model'),
-                            'width': photos_data['data'][i].get('image_width'),
-                            'height': photos_data['data'][i].get('image_height'),
-                            'orientation': photos_data['data'][i].get('orientation'),
-                            'uploaded_by': photos_data['data'][i].get('uploaded_by'),
-                        }
+            # Process photos associated with this node
+            "photos": [
+                {
+                    "photoId": photo_id,
+                    # Extract photo filename, handling cases where photo data might be missing
+                    "name": (photos_data["data"][i].get("filename") if "data" in photos_data and i < len(photos_data["data"]) else None),
+                    # Convert timestamp to ISO format, handling cases where date might be missing
+                    "date": datetime.fromtimestamp(photos_data["data"][i]["date_taken"]).isoformat() if "data" in photos_data and i < len(photos_data["data"]) and "date_taken" in photos_data["data"][i] else None,
+                    "associated": True,  # Flag indicating this photo is associated with the node
+                    # Include photo metadata for additional context
+                    "metadata": {
+                        "camera": photos_data["data"][i].get("camera_model"),
+                        "width": photos_data["data"][i].get("image_width"),
+                        "height": photos_data["data"][i].get("image_height"),
+                        "orientation": photos_data["data"][i].get("orientation"),
+                        "uploaded_by": photos_data["data"][i].get("uploaded_by"),
                     }
-                    for i, photo_id in enumerate(node_data.get('photos', {}).keys())
-                ],
-                'total_photos': len(node_data.get('photos', {}))
-            }
-            for node_data in (nodes_data.get('data', []) if isinstance(nodes_data.get('data', []), list) else [])
-        ]
-        
-        result = {
-            "data": nodes,
-            "total": len(nodes),
-            "job_id": job_id
+                }
+                # Iterate through all photo IDs associated with this node
+                for i, photo_id in enumerate(node_data.get("photos", {}).keys())
+            ],
+            # Count of total photos associated with this node
+            "total_photos": len(node_data.get("photos", {}))
         }
-        print(f"Data: {result}")
-        
-        return Response(
-            content=json.dumps(result, indent=2),
-            media_type="application/json"
-        )
-        
-    except Exception as e:
-        return Response(
-            content=f"Error processing request: {str(e)}",
-            status_code=500
-        )
+        # Process all nodes, handling cases where data might be in different formats
+        for node_data in (nodes_data.get("data", []) if isinstance(nodes_data.get("data", []), list) else [])
+    ]
+    
+    # Format the final response with summary information
+    result = {
+        "data": nodes,           # List of nodes with their associated photo data
+        "total": len(nodes),     # Count of nodes returned
+        "job_id": job_id        # The job ID that was queried
+    }
+    
+    # Log results for debugging and monitoring
+    print(f"Data: {result}")
+    
+    # Return the formatted JSON response
+    return Response(
+        content=json.dumps(result, indent=2),
+        media_type="application/json"
+    )
+
 
 @app.post("/update_node_attributes")
 def update_node_attributes_endpoint(request: Request):
