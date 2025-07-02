@@ -18,19 +18,10 @@ app.add_middleware(
 
 @app.get("/filter_nodes")
 def filter_nodes(request: Request, custom_filters=None):
-  """
-  Filter nodes endpoint - returns nodes matching specified attribute criteria
-  Can be called as an API endpoint or internally by other functions
-  
-  Args:
-    request: FastAPI Request object containing query parameters
-    custom_filters: Optional dict of filters for internal function calls
-  """
-
   # Extract query parameters from the incoming request
   query_params = dict(request.query_params)
   api_key = query_params.get("api_key")
-  job_id = query_params.get("job_id", "-OT77Az4JJlgEgQOASe0")  # Default job ID if not provided
+  job_id = query_params.get("job_id", "-OTcBEj966ESJQ7vQSvE")  # Default job ID if not provided
   node_id = query_params.get("node_id")
     
   # Validate required API key parameter
@@ -41,87 +32,76 @@ def filter_nodes(request: Request, custom_filters=None):
     # For external API calls, return HTTP 400 error response
     return Response(content="Missing api_key parameter", status_code=400)
   
-  try:
-    # Determine which filters to use: custom filters (for internal calls) or default pole filter (for API calls)
-    attribute_filters = custom_filters if custom_filters is not None else {"node_type": "pole"}
-    
-    # Build the API URL to fetch all nodes from the specified job
-    nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
-    
-    # Set up HTTP headers for the API request
-    headers = {
-        "Content-Type": "application/json",
-    }
-    
-    # Make API call to Katapult Pro to get all nodes for the job
-    nodes_response = requests.get(nodes_url, headers=headers)
-    
-    # Check if the API call was successful
-    if nodes_response.status_code != 200:
-        if custom_filters is not None:
-            # For internal calls, raise exception with detailed error info
-            raise Exception(f"Failed to fetch nodes: {nodes_response.status_code} {nodes_response.text}")
-        # For external API calls, return the error response from upstream API
-        return Response(
-            content=nodes_response.text,
-            status_code=nodes_response.status_code
-        )
-        
-    # Parse the JSON response and extract the nodes list
-    data = nodes_response.json()
-    nodes = data.get('data', [])
-    matching_nodes = []
+  # Determine which filters to use: custom filters (for internal calls) or default pole filter (for API calls)
+  attribute_filters = custom_filters if custom_filters is not None else {"node_type": "pole"}
+  
+  # Build the API URL to fetch all nodes from the specified job
+  nodes_url = f"https://dcs.katapultpro.com/api/v3/jobs/{job_id}/nodes?api_key={api_key}"
+  
+  # Set up HTTP headers for the API request
+  header = {
+      "Content-Type": "application/json",
+  }
+  
+  # Make API call to Katapult Pro to get all nodes for the job
+  nodes_response = requests.get(nodes_url, headers=header)
+  
+  # Check if the API call was successful
+  if nodes_response.status_code != 200:
+      if custom_filters is not None:
+          # For internal calls, raise exception with detailed error info
+          raise Exception(f"Failed to fetch nodes: {nodes_response.status_code} {nodes_response.text}")
+      # For external API calls, return the error response from upstream API
+      return Response(
+          content=nodes_response.text,
+          status_code=nodes_response.status_code
+      )
       
-    # Apply filtering logic to find nodes that match all specified attribute criteria
-    for node in nodes:
-        match = True
-        
-        # Check each filter criteria against the node's attributes
-        for key, filter_value in attribute_filters.items():
-            node_attributes = node.get('attributes', {})
-            # Handle both direct attribute values and nested attribute objects with instance IDs
-            # Use next() to get the first value from nested dicts, or fall back to direct value
-            attribute_value = next(iter(node_attributes.get(key, {}).values()), node_attributes.get(key))
-            
-            # If any filter criteria doesn't match, exclude this node
-            if attribute_value != filter_value:
-                match = False
-                break
-                
-        # Add node to results if it matches all filter criteria
-        if match:
-            matching_nodes.append(node)
+  # Parse the JSON response and extract the nodes list
+  data = nodes_response.json()
+  nodes = data.get("data", [])
+  matching_nodes = []
     
-    # For internal function calls, return just the filtered nodes list
-    if custom_filters is not None:
-        return matching_nodes
-    
-    # Log results for debugging and monitoring
-    print(f"Data: {len(matching_nodes)} nodes found\nFilters applied: {attribute_filters}\nJob ID: {job_id}\nNodes: {matching_nodes}")
-    
-    # For external API calls, format and return a complete JSON response
-    results_json = {
-      "data": matching_nodes,              # List of nodes that matched the filter criteria
-      "total": len(matching_nodes),        # Count of matching nodes
-      "filters_applied": attribute_filters, # The filter criteria that were used
-      "job_id": job_id                     # The job ID that was queried
-    }
-    
-    # Return the formatted JSON response
-    return Response(
-      content=json.dumps(results_json, indent=2),
-      media_type="application/json",
-    
-    )
-  except Exception as e:
-    if custom_filters is not None:
-      # For internal function calls, propagate the exception to the calling function
-      raise e
-    # For external API calls, return a formatted error response
-    return Response(
-      content=f"Error processing request: {str(e)}",
-      status_code=500
-    )
+  # Apply filtering logic to find nodes that match all specified attribute criteria
+  for node in nodes:
+      match = True
+      
+      # Check each filter criteria against the node's attributes
+      for key, filter_value in attribute_filters.items():
+          node_attributes = node.get("attributes", {})
+          # Handle both direct attribute values and nested attribute objects with instance IDs
+          # Use next() to get the first value from nested dicts, or fall back to direct value
+          attribute_value = next(iter(node_attributes.get(key, {}).values()), node_attributes.get(key))
+          
+          # If any filter criteria doesn't match, exclude this node
+          if attribute_value != filter_value:
+              match = False
+              break
+              
+      # Add node to results if it matches all filter criteria
+      if match:
+          matching_nodes.append(node)
+  
+  # For internal function calls, return just the filtered nodes list
+  if custom_filters is not None:
+      return matching_nodes
+  
+  # Log results for debugging and monitoring
+  print(f"Data: {len(matching_nodes)} nodes found\nFilters applied: {attribute_filters}\nJob ID: {job_id}\nNodes: {matching_nodes}")
+  
+  # For external API calls, format and return a complete JSON response
+  results_json = {
+    "data": matching_nodes,              # List of nodes that matched the filter criteria
+    "total": len(matching_nodes),        # Count of matching nodes
+    "filters_applied": attribute_filters, # The filter criteria that were used
+    "job_id": job_id                     # The job ID that was queried
+  }
+  
+  # Return the formatted JSON response
+  return Response(
+    content=json.dumps(results_json, indent=2),
+    media_type="application/json",
+  )
 
 @app.post("/get_nodes_with_photos")
 def get_nodes_with_photos_endpoint(request: Request):
